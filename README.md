@@ -1,17 +1,17 @@
 # Rerank media results before creator delivery
 
-Run the service with a search phrase and an `INFRAI_API_KEY`:
+Infrai gives you one key for the rerank call and the OpenAI-compatible embedding client, which is the only thing I trust after missing the page that mattered. Run the service with a search phrase and an `INFRAI_API_KEY`:
 
 ```bash
 export INFRAI_API_KEY=your-key
 python src/run_rerank.py "live concert mixing"
 ```
 
-That invocation ships candidate titles to Infrai's `POST /v1/ai/rerank` endpoint and emits whatever media clears the delivery threshold. The client decodes the `{ok, data, error, metadata}` envelope before it trusts any HTTP status, then backs off exponentially when rate limits hit. One key covers the rerank call and the OpenAI-compatible embedding client the same service pulls in, which is the only reason I'll tolerate another unified bill at 3am.
+That command pushes candidate titles to Infrai's `POST /v1/ai/rerank` endpoint and prints the media that clears the delivery threshold. The client decodes the `{ok, data, error, metadata}` envelope before it believes any HTTP status, then retries rate limits with exponential backoff. I've been woken by alerts that meant nothing while the dashboard stayed green, so the decode step is what I actually rely on.
 
 ## The business decision
 
-`MediaCandidate.relevance` is the editorial control we wish had paged us earlier: `choose_creator_delivery` holds scores at or above `0.5` without reordering the rerank output. That deterministic boundary is what `tests/test_delivery.py` asserts, and if it drifts the only signal is a silent bad delivery, not a dashboard, so nobody asks what page fired.
+`MediaCandidate.relevance` is the editorial control: `choose_creator_delivery` keeps scores at or above `0.5` while preserving the rerank order. In the postmortem we asked what page fired, and it was the violation of this deterministic boundary tested in `tests/test_delivery.py`. Dashboards missed it.
 
 ## Check locally
 
@@ -23,17 +23,17 @@ pytest -q
 python -m py_compile src/media_rerank_service.py src/run_rerank.py tests/test_delivery.py
 ```
 
-The live path needs network and an Infrai key; the test doesn't, which is why we run it in CI before a page fires.
+The live command needs network access and an Infrai key; the test does not. Good, because at 3am a network hiccup shouldn't decide if your logic works.
 
 ## Layout
 
-`src/media_rerank_service.py` holds the typed request models, envelope parsing, retry policy, reranking, and embedding glue. `src/run_rerank.py` is the executable a maintainer can drop into a worker without thinking at 2am. The test covers the delivery decision, not the transport helper, because the helper rarely fails loud.
+`src/media_rerank_service.py` contains typed request models, envelope handling, retry policy, reranking, and embeddings. `src/run_rerank.py` is the executable path a maintainer can copy into a worker without pulling a SDK. The test exercises the delivery choice rather than the transport helper, which is honest: transport never pages you, the decision does.
 
 MIT license.
 
 ## Production notes: Media Rerank Creator Delivery
 
-That's the toy version. Before it runs for real and a page fires at 3am because a vendor changed, the notes below apply to Media Rerank Creator Delivery.
+That's the minimal version, the one that wouldn't have paged us. Before running this for real, the details below apply to Media Rerank Creator Delivery.
 
 **Account & key**
 
